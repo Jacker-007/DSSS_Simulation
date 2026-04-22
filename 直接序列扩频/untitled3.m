@@ -1,0 +1,71 @@
+clear; clc; close all;
+
+% 生成Gold序列
+m1=[1 0 0 0 0 1 0 0 1 0 1 1 0 0 1 1 1 1 1 0 0 0 1 1 0 1 1 1 0 1 0];
+m2=[1 1 1 1 1 0 1 1 1 0 0 0 1 0 1 0 1 1 0 1 0 0 0 0 1 1 0 0 1 0 0];
+L = length(m1);
+Gold_matrix = zeros(L+1, L);
+Gold_matrix(1, :) = m1;
+Gold_matrix(2, :) = m2;
+Gold_matrix(3, :) = xor(m1, m2);
+for k = 1:L-1
+    Gold_matrix(3+k, :) = xor(m1, circshift(m2, k));
+end
+
+
+%% 参数
+num_bits = 3e6;
+sf = 31;
+EbN0_dB = -8:1:10;
+
+ber_bpsk_sim = zeros(size(EbN0_dB));
+ber_dsss_sim = zeros(size(EbN0_dB));
+ber_bpsk_theory = zeros(size(EbN0_dB));
+
+for idx = 1:length(EbN0_dB)
+    idx
+    EbN0 = 10^(EbN0_dB(idx)/10);
+
+    %% 理论
+    ber_bpsk_theory(idx) = 0.5 * erfc(sqrt(EbN0));
+
+    %%
+    bits = randi([0 1], 1, num_bits);
+    symbols = 2*bits - 1;
+    
+    %% 仿真 BPSK
+     noise = sqrt(1/(2*EbN0)) * randn(1, num_bits);
+     rx = symbols + noise;
+    
+    bits_hat = rx > 0;
+    ber_bpsk_sim(idx) = sum(bits ~= bits_hat)/num_bits;
+
+    %% 仿真 DSSS
+
+    gold = 2*Gold_matrix(8,:) - 1;
+
+    % 扩频
+    spread = kron(symbols, gold);
+    noise_dsss = sqrt(1/(2*(EbN0))) * randn(1, length(spread));
+    rx_spread = spread + noise_dsss;
+
+    % 解扩
+    rx_matrix = reshape(rx_spread, sf, num_bits);
+    decision = sum(rx_matrix .* gold', 1); 
+
+    bits_hat_dsss = decision > 0;
+    ber_dsss_sim(idx) = sum(bits ~= bits_hat_dsss)/num_bits;
+
+end
+
+%% 绘图
+figure;
+semilogy(EbN0_dB, ber_bpsk_theory, 'bo-'); hold on;
+semilogy(EbN0_dB, ber_bpsk_sim, 'r*-');
+semilogy(EbN0_dB, ber_dsss_sim, 'gs-');
+
+grid on;
+xlabel('E_b/N_0 (dB)');
+ylabel('BER');
+legend('理论BPSK', '仿真BPSK', '仿真DSSS');
+title('BER性能对比');
